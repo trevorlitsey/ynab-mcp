@@ -17,7 +17,7 @@ All read-only:
 
 ## Architecture
 
-- TypeScript Express app, bundled by SAM with esbuild
+- TypeScript Express app, bundled by AWS CDK with esbuild
 - AWS Lambda + Function URL (no API Gateway)
 - DynamoDB single table for OAuth state (auth codes + access tokens, TTL-evicted)
 - Acts as an OAuth authorization server for MCP clients; delegates identity to YNAB's own OAuth
@@ -35,14 +35,12 @@ All read-only:
 
 ```sh
 npm install
-npm run deploy:guided   # first time — answer prompts, paste YNAB client id/secret
+export AWS_PROFILE=mcp                  # or whatever profile you use
+export YNAB_CLIENT_ID=...               # from step 1
+export YNAB_CLIENT_SECRET=...           # from step 1
+npx cdk bootstrap                       # one-time per account/region
+npm run deploy
 ```
-
-When prompted:
-- Stack name: `ynab-mcp`
-- AWS Region: `us-east-1`
-- `YnabClientId` / `YnabClientSecret`: from step 1
-- Confirm changes / Save arguments: yes
 
 Outputs will include `FunctionUrl` and `CallbackUrl`.
 

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .aws-sam/
+cdk.out/
+cdk.context.json
 *.log
 .env
 .env.local

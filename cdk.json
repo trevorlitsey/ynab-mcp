@@ -1,0 +1,12 @@
+{
+  "app": "npx tsx infra/main.ts",
+  "watch": {
+    "include": ["src/**", "infra/**"],
+    "exclude": ["node_modules", "cdk.out", "dist", ".aws-sam"]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"]
+  }
+}
