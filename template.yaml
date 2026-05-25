@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Read-only YNAB MCP server with OAuth, deployed as a Lambda Function URL.
+
+Parameters:
+  YnabClientId:
+    Type: String
+    Description: OAuth client_id from your YNAB OAuth application
+    NoEcho: true
+  YnabClientSecret:
+    Type: String
+    Description: OAuth client_secret from your YNAB OAuth application
+    NoEcho: true
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    MemorySize: 512
+    Timeout: 30
+
+Resources:
+  StorageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  McpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: dist/index.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref StorageTable
+          YNAB_CLIENT_ID: !Ref YnabClientId
+          YNAB_CLIENT_SECRET: !Ref YnabClientSecret
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StorageTable
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: BUFFERED
+        Cors:
+          AllowOrigins: ["*"]
+          AllowMethods: ["*"]
+          AllowHeaders: ["*"]
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+          - src/index.ts
+        OutExtension:
+          - .js=.js
+        Target: node22
+        Format: esm
+        Banner:
+          js: |
+            import { createRequire } from 'module';
+            const require = createRequire(import.meta.url);
+        OutFile: dist/index.js
+        Bundle: true
+        Sourcemap: true
+        Platform: node
+
+Outputs:
+  FunctionUrl:
+    Description: Public URL for the MCP server (use this in claude.ai's custom connector)
+    Value: !GetAtt McpFunctionUrl.FunctionUrl
+  CallbackUrl:
+    Description: YNAB OAuth redirect URI to register in the YNAB OAuth app
+    Value: !Sub "${McpFunctionUrl.FunctionUrl}callback"

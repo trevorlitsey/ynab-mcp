@@ -1,0 +1,40 @@
+{
+  "name": "ynab-mcp",
+  "version": "0.1.0",
+  "description": "Read-only remote MCP server for YNAB (You Need A Budget), deployable to AWS Lambda with OAuth",
+  "type": "module",
+  "scripts": {
+    "build": "sam build",
+    "dev": "tsx watch src/local.ts",
+    "type-check": "tsc --noEmit",
+    "deploy": "sam deploy",
+    "deploy:guided": "sam deploy --guided"
+  },
+  "keywords": [
+    "mcp",
+    "ynab",
+    "model-context-protocol",
+    "budget",
+    "oauth",
+    "aws-lambda"
+  ],
+  "author": "Trevor Litsey",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "serverless-http": "^3.2.0",
+    "ynab": "^2.7.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
