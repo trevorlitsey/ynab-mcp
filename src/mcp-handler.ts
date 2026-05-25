@@ -40,6 +40,7 @@ export async function handleMcpRequest(req: Request, res: Response): Promise<voi
   const server = buildServer(record.ynabAccessToken);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
+    enableJsonResponse: true,
   });
   res.on("close", () => {
     transport.close();

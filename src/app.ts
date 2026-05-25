@@ -11,14 +11,19 @@ export function createApp(): express.Express {
     "/mcp",
     express.json(),
     (req, _res, next) => {
-      const accept = (req.headers.accept ?? "").toLowerCase();
-      const needsJson = !accept.includes("application/json");
-      const needsSse = !accept.includes("text/event-stream");
-      if (needsJson || needsSse) {
-        const parts = [accept, needsJson ? "application/json" : null, needsSse ? "text/event-stream" : null]
-          .filter(Boolean)
-          .join(", ");
-        req.headers.accept = parts;
+      // serverless-http doesn't populate req.rawHeaders, but @hono/node-server
+      // (used by @modelcontextprotocol/sdk's StreamableHTTPServerTransport)
+      // reads headers exclusively from rawHeaders. Rebuild it from req.headers.
+      if (!req.rawHeaders || req.rawHeaders.length === 0) {
+        const rebuilt: string[] = [];
+        for (const [name, value] of Object.entries(req.headers)) {
+          if (Array.isArray(value)) {
+            for (const v of value) rebuilt.push(name, v);
+          } else if (typeof value === "string") {
+            rebuilt.push(name, value);
+          }
+        }
+        req.rawHeaders = rebuilt;
       }
       next();
     },
