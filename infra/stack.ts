@@ -4,8 +4,10 @@ import {
   BillingMode,
   Table,
 } from "aws-cdk-lib/aws-dynamodb";
-import { Architecture, FunctionUrlAuthType, HttpMethod, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Architecture, Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
+import { HttpApi, CorsHttpMethod } from "aws-cdk-lib/aws-apigatewayv2";
+import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import type { Construct } from "constructs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,22 +55,22 @@ export class YnabMcpStack extends Stack {
 
     table.grantReadWriteData(fn);
 
-    const fnUrl = fn.addFunctionUrl({
-      authType: FunctionUrlAuthType.NONE,
-      cors: {
-        allowedOrigins: ["*"],
-        allowedMethods: [HttpMethod.ALL],
-        allowedHeaders: ["*"],
+    const api = new HttpApi(this, "HttpApi", {
+      defaultIntegration: new HttpLambdaIntegration("LambdaIntegration", fn),
+      corsPreflight: {
+        allowOrigins: ["*"],
+        allowMethods: [CorsHttpMethod.ANY],
+        allowHeaders: ["*"],
       },
     });
 
-    new CfnOutput(this, "FunctionUrl", {
+    new CfnOutput(this, "ApiUrl", {
       description: "Public URL for the MCP server (append /mcp for the claude.ai connector)",
-      value: fnUrl.url,
+      value: api.apiEndpoint,
     });
     new CfnOutput(this, "CallbackUrl", {
       description: "YNAB OAuth redirect URI to register in the YNAB OAuth app",
-      value: `${fnUrl.url}callback`,
+      value: `${api.apiEndpoint}/callback`,
     });
   }
 }
