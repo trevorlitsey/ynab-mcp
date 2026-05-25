@@ -7,7 +7,19 @@ import { getToken } from "./storage.js";
 import { publicUrl } from "./config.js";
 
 function buildServer(ynabToken: string): McpServer {
-  const server = new McpServer({ name: "ynab-mcp", version: "0.1.0" });
+  const server = new McpServer({
+    name: "ynab-mcp",
+    title: "YNAB",
+    version: "0.1.0",
+    websiteUrl: "https://www.ynab.com",
+    icons: [
+      {
+        src: "https://app.ynab.com/apple-touch-icon.png",
+        mimeType: "image/png",
+        sizes: ["180x180"],
+      },
+    ],
+  });
   const api = new ynab.API(ynabToken);
   registerTools(server, api);
   return server;
