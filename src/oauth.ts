@@ -122,7 +122,8 @@ export function oauthRouter(): Router {
     url.searchParams.set("client_id", config.ynabClientId);
     url.searchParams.set("redirect_uri", ynabRedirectUri);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "read-only");
+    // Full (read/write) access — required for update_transaction.
+    // (Omitting the scope param requests YNAB's default read/write scope.)
     url.searchParams.set("state", ynabState);
     res.redirect(url.toString());
   });

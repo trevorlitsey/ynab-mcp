@@ -197,6 +197,46 @@ export function registerTools(server: McpServer, api: ynab.API): void {
   );
 
   server.registerTool(
+    "update_transaction",
+    {
+      title: "Update Transaction",
+      description:
+        "Update an existing transaction's memo and/or category. Only the provided fields are changed; omitted fields are left as-is. Pass category_id: null to clear (uncategorize) a transaction.",
+      inputSchema: {
+        budget_id: z.string(),
+        transaction_id: z.string(),
+        memo: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("New memo text. Pass null or empty string to clear the memo."),
+        category_id: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(
+            "New category id. Pass null to uncategorize the transaction."
+          ),
+      },
+    },
+    async ({ budget_id, transaction_id, memo, category_id }) => {
+      if (memo === undefined && category_id === undefined) {
+        return err("Provide at least one of memo or category_id to update.");
+      }
+      const transaction: ynab.ExistingTransaction = {};
+      if (memo !== undefined) transaction.memo = memo;
+      if (category_id !== undefined) transaction.category_id = category_id;
+
+      const res = await api.transactions.updateTransaction(
+        budget_id,
+        transaction_id,
+        { transaction }
+      );
+      return ok(res.data.transaction);
+    }
+  );
+
+  server.registerTool(
     "list_scheduled_transactions",
     {
       title: "List Scheduled Transactions",
