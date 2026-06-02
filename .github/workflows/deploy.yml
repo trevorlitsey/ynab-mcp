@@ -1,0 +1,53 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ynab-mcp-deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy to aws
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      YNAB_CLIENT_ID: ${{ secrets.YNAB_CLIENT_ID }}
+      YNAB_CLIENT_SECRET: ${{ secrets.YNAB_CLIENT_SECRET }}
+    steps:
+      - name: check out repository
+        uses: actions/checkout@v4
+
+      - name: set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: install dependencies
+        run: npm ci
+
+      - name: type-check
+        run: npm run type-check
+
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: verify required secrets
+        run: |
+          test -n "$YNAB_CLIENT_ID"
+          test -n "$YNAB_CLIENT_SECRET"
+
+      - name: deploy cdk stack
+        run: npx cdk deploy YnabMcp --require-approval never
