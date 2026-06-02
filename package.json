@@ -1,7 +1,7 @@
 {
   "name": "ynab-mcp",
   "version": "0.1.0",
-  "description": "Read-only remote MCP server for YNAB (You Need A Budget), deployable to AWS Lambda with OAuth",
+  "description": "Remote MCP server for YNAB (You Need A Budget), deployable to AWS Lambda with OAuth",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/local.ts",

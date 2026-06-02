@@ -1,10 +1,10 @@
 # ynab-mcp
 
-A read-only remote [Model Context Protocol](https://modelcontextprotocol.io) server for [YNAB](https://www.ynab.com) (You Need A Budget), deployable to AWS Lambda. Supports the [OAuth 2.1 authorization flow](https://modelcontextprotocol.io/specification/draft/basic/authorization) required by claude.ai's custom connectors — each user signs in with their own YNAB account.
+A remote [Model Context Protocol](https://modelcontextprotocol.io) server for [YNAB](https://www.ynab.com) (You Need A Budget), deployable to AWS Lambda. Supports the [OAuth 2.1 authorization flow](https://modelcontextprotocol.io/specification/draft/basic/authorization) required by claude.ai's custom connectors — each user signs in with their own YNAB account.
 
 ## Tools
 
-All read-only:
+Read:
 
 - `list_budgets`, `get_budget`
 - `list_accounts`, `get_account`
@@ -14,6 +14,12 @@ All read-only:
 - `list_scheduled_transactions`
 - `list_months`, `get_month`
 - `get_user`
+
+Write:
+
+- `update_transaction` — edit a transaction's `memo` and/or `category_id` (pass `category_id: null` to uncategorize)
+
+> **Note:** Because of the write tool, the server now requests YNAB's full (read/write) OAuth scope rather than read-only. Existing connections will need to re-authorize to grant write access.
 
 ## Architecture
 
