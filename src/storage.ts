@@ -32,18 +32,38 @@ export type CodeRecord = {
   ttl: number;
 };
 
-export type TokenRecord = {
+// A session owns the YNAB tokens for one authorized connection. Access tokens
+// and refresh tokens reference it by id, so refreshing the YNAB token (which
+// rotates both YNAB tokens) only has to update this one record.
+export type SessionRecord = {
   pk: string;
-  token: string;
+  sessionId: string;
   ynabAccessToken: string;
   ynabRefreshToken: string;
   ynabExpiresAt: number;
   ttl: number;
 };
 
+export type AccessTokenRecord = {
+  pk: string;
+  token: string;
+  sessionId: string;
+  ttl: number;
+};
+
+export type RefreshTokenRecord = {
+  pk: string;
+  token: string;
+  sessionId: string;
+  clientId: string;
+  ttl: number;
+};
+
 const CLIENT_PREFIX = "client#";
 const CODE_PREFIX = "code#";
+const SESSION_PREFIX = "session#";
 const TOKEN_PREFIX = "token#";
+const REFRESH_PREFIX = "refresh#";
 
 export async function saveClient(record: Omit<ClientRecord, "pk">): Promise<void> {
   await client.send(
@@ -90,7 +110,32 @@ export async function consumeCode(code: string): Promise<CodeRecord | null> {
   return result.Item as CodeRecord;
 }
 
-export async function saveToken(record: Omit<TokenRecord, "pk">): Promise<void> {
+export async function saveSession(
+  record: Omit<SessionRecord, "pk">
+): Promise<void> {
+  await client.send(
+    new PutCommand({
+      TableName: config.tableName,
+      Item: { ...record, pk: SESSION_PREFIX + record.sessionId },
+    })
+  );
+}
+
+export async function getSession(
+  sessionId: string
+): Promise<SessionRecord | null> {
+  const result = await client.send(
+    new GetCommand({
+      TableName: config.tableName,
+      Key: { pk: SESSION_PREFIX + sessionId },
+    })
+  );
+  return (result.Item as SessionRecord) ?? null;
+}
+
+export async function saveAccessToken(
+  record: Omit<AccessTokenRecord, "pk">
+): Promise<void> {
   await client.send(
     new PutCommand({
       TableName: config.tableName,
@@ -99,12 +144,46 @@ export async function saveToken(record: Omit<TokenRecord, "pk">): Promise<void> 
   );
 }
 
-export async function getToken(token: string): Promise<TokenRecord | null> {
+export async function getAccessToken(
+  token: string
+): Promise<AccessTokenRecord | null> {
   const result = await client.send(
     new GetCommand({
       TableName: config.tableName,
       Key: { pk: TOKEN_PREFIX + token },
     })
   );
-  return (result.Item as TokenRecord) ?? null;
+  return (result.Item as AccessTokenRecord) ?? null;
+}
+
+export async function saveRefreshToken(
+  record: Omit<RefreshTokenRecord, "pk">
+): Promise<void> {
+  await client.send(
+    new PutCommand({
+      TableName: config.tableName,
+      Item: { ...record, pk: REFRESH_PREFIX + record.token },
+    })
+  );
+}
+
+// Reads and deletes a refresh token in one step: refresh tokens are single-use
+// (rotated on every refresh) to limit the blast radius of a leaked token.
+export async function consumeRefreshToken(
+  token: string
+): Promise<RefreshTokenRecord | null> {
+  const result = await client.send(
+    new GetCommand({
+      TableName: config.tableName,
+      Key: { pk: REFRESH_PREFIX + token },
+    })
+  );
+  if (!result.Item) return null;
+  await client.send(
+    new DeleteCommand({
+      TableName: config.tableName,
+      Key: { pk: REFRESH_PREFIX + token },
+    })
+  );
+  return result.Item as RefreshTokenRecord;
 }

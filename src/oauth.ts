@@ -5,17 +5,24 @@ import {
   YNAB_TOKEN_URL,
   config,
   publicUrl,
+  ACCESS_TOKEN_TTL,
+  REFRESH_TOKEN_TTL,
+  SESSION_TTL,
 } from "./config.js";
 import {
   saveClient,
   getClient,
   saveCode,
   consumeCode,
-  saveToken,
+  saveSession,
+  getSession,
+  saveAccessToken,
+  saveRefreshToken,
+  consumeRefreshToken,
 } from "./storage.js";
+import { getValidYnabAccessToken, YnabRefreshError } from "./ynab-token.js";
 
 const TEN_MINUTES = 10 * 60;
-const ONE_HOUR = 60 * 60;
 
 function randomToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString("base64url");
@@ -45,7 +52,7 @@ export function oauthRouter(): Router {
       token_endpoint: `${url}/token`,
       registration_endpoint: `${url}/register`,
       response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
     });
@@ -69,7 +76,7 @@ export function oauthRouter(): Router {
       client_id: clientId,
       client_id_issued_at: nowSeconds(),
       redirect_uris: redirectUris,
-      grant_types: ["authorization_code"],
+      grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
     });
@@ -199,57 +206,136 @@ export function oauthRouter(): Router {
     res.redirect(redirect.toString());
   });
 
+  // Issues a fresh access/refresh token pair bound to a session and responds
+  // with the standard OAuth token payload.
+  async function issueTokens(
+    res: Response,
+    sessionId: string,
+    clientId: string
+  ): Promise<void> {
+    const accessToken = randomToken();
+    const refreshToken = randomToken();
+    await saveAccessToken({
+      token: accessToken,
+      sessionId,
+      ttl: nowSeconds() + ACCESS_TOKEN_TTL,
+    });
+    await saveRefreshToken({
+      token: refreshToken,
+      sessionId,
+      clientId,
+      ttl: nowSeconds() + REFRESH_TOKEN_TTL,
+    });
+    res.json({
+      access_token: accessToken,
+      token_type: "Bearer",
+      expires_in: ACCESS_TOKEN_TTL,
+      refresh_token: refreshToken,
+    });
+  }
+
+  async function handleAuthorizationCode(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    const { code, code_verifier, client_id, redirect_uri } = (req.body ??
+      {}) as Record<string, string>;
+    if (!code || !code_verifier) {
+      res.status(400).json({ error: "invalid_request" });
+      return;
+    }
+    const record = await consumeCode(code);
+    if (!record) {
+      res.status(400).json({ error: "invalid_grant" });
+      return;
+    }
+    if (record.clientId !== client_id) {
+      res.status(400).json({ error: "invalid_client" });
+      return;
+    }
+    if (record.redirectUri !== redirect_uri) {
+      res
+        .status(400)
+        .json({ error: "invalid_grant", description: "redirect mismatch" });
+      return;
+    }
+    const expectedChallenge = crypto
+      .createHash("sha256")
+      .update(code_verifier)
+      .digest("base64url");
+    if (expectedChallenge !== record.codeChallenge) {
+      res
+        .status(400)
+        .json({ error: "invalid_grant", description: "PKCE failed" });
+      return;
+    }
+
+    const sessionId = randomToken(16);
+    await saveSession({
+      sessionId,
+      ynabAccessToken: record.ynabAccessToken,
+      ynabRefreshToken: record.ynabRefreshToken,
+      ynabExpiresAt: record.ynabExpiresAt,
+      ttl: nowSeconds() + SESSION_TTL,
+    });
+    await issueTokens(res, sessionId, record.clientId);
+  }
+
+  async function handleRefreshToken(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    const { refresh_token, client_id } = (req.body ?? {}) as Record<
+      string,
+      string
+    >;
+    if (!refresh_token) {
+      res.status(400).json({ error: "invalid_request" });
+      return;
+    }
+    // Single-use: the old refresh token is consumed and a new one is minted.
+    const record = await consumeRefreshToken(refresh_token);
+    if (!record) {
+      res.status(400).json({ error: "invalid_grant" });
+      return;
+    }
+    if (client_id && record.clientId !== client_id) {
+      res.status(400).json({ error: "invalid_client" });
+      return;
+    }
+    const session = await getSession(record.sessionId);
+    if (!session) {
+      res.status(400).json({ error: "invalid_grant" });
+      return;
+    }
+    // Renew the underlying YNAB grant now so the new access token is usable for
+    // its full lifetime. If YNAB has revoked us, the client must re-authorize.
+    try {
+      await getValidYnabAccessToken(session);
+    } catch (err) {
+      if (err instanceof YnabRefreshError) {
+        res.status(400).json({ error: "invalid_grant" });
+        return;
+      }
+      throw err;
+    }
+    await issueTokens(res, session.sessionId, record.clientId);
+  }
+
   router.post(
     "/token",
     express.urlencoded({ extended: false }),
     async (req, res) => {
-      const { grant_type, code, code_verifier, client_id, redirect_uri } = (
-        req.body ?? {}
-      ) as Record<string, string>;
-      if (grant_type !== "authorization_code") {
-        res.status(400).json({ error: "unsupported_grant_type" });
+      const { grant_type } = (req.body ?? {}) as Record<string, string>;
+      if (grant_type === "authorization_code") {
+        await handleAuthorizationCode(req, res);
         return;
       }
-      if (!code || !code_verifier) {
-        res.status(400).json({ error: "invalid_request" });
+      if (grant_type === "refresh_token") {
+        await handleRefreshToken(req, res);
         return;
       }
-      const record = await consumeCode(code);
-      if (!record) {
-        res.status(400).json({ error: "invalid_grant" });
-        return;
-      }
-      if (record.clientId !== client_id) {
-        res.status(400).json({ error: "invalid_client" });
-        return;
-      }
-      if (record.redirectUri !== redirect_uri) {
-        res.status(400).json({ error: "invalid_grant", description: "redirect mismatch" });
-        return;
-      }
-      const expectedChallenge = crypto
-        .createHash("sha256")
-        .update(code_verifier)
-        .digest("base64url");
-      if (expectedChallenge !== record.codeChallenge) {
-        res.status(400).json({ error: "invalid_grant", description: "PKCE failed" });
-        return;
-      }
-
-      const accessToken = randomToken();
-      await saveToken({
-        token: accessToken,
-        ynabAccessToken: record.ynabAccessToken,
-        ynabRefreshToken: record.ynabRefreshToken,
-        ynabExpiresAt: record.ynabExpiresAt,
-        ttl: nowSeconds() + ONE_HOUR,
-      });
-
-      res.json({
-        access_token: accessToken,
-        token_type: "Bearer",
-        expires_in: ONE_HOUR,
-      });
+      res.status(400).json({ error: "unsupported_grant_type" });
     }
   );
 
