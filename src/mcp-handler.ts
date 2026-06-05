@@ -3,7 +3,8 @@ import * as ynab from "ynab";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerTools } from "./tools.js";
-import { getToken } from "./storage.js";
+import { getAccessToken, getSession } from "./storage.js";
+import { getValidYnabAccessToken, YnabRefreshError } from "./ynab-token.js";
 import { publicUrl } from "./config.js";
 
 function buildServer(ynabToken: string): McpServer {
@@ -43,13 +44,31 @@ export async function handleMcpRequest(req: Request, res: Response): Promise<voi
     return;
   }
   const token = auth.slice(7).trim();
-  const record = await getToken(token);
-  if (!record) {
+  const accessRecord = await getAccessToken(token);
+  if (!accessRecord) {
+    sendAuthChallenge(req, res);
+    return;
+  }
+  const session = await getSession(accessRecord.sessionId);
+  if (!session) {
     sendAuthChallenge(req, res);
     return;
   }
 
-  const server = buildServer(record.ynabAccessToken);
+  // Transparently refresh the YNAB token if it's expiring, so even a still-valid
+  // access token never hits YNAB with a stale credential.
+  let ynabAccessToken: string;
+  try {
+    ynabAccessToken = await getValidYnabAccessToken(session);
+  } catch (err) {
+    if (err instanceof YnabRefreshError) {
+      sendAuthChallenge(req, res);
+      return;
+    }
+    throw err;
+  }
+
+  const server = buildServer(ynabAccessToken);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

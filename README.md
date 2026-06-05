@@ -25,8 +25,9 @@ Write:
 
 - TypeScript Express app, bundled by AWS CDK with esbuild
 - AWS Lambda + Function URL (no API Gateway)
-- DynamoDB single table for OAuth state (auth codes + access tokens, TTL-evicted)
+- DynamoDB single table for OAuth state (auth codes, sessions, access + refresh tokens, TTL-evicted)
 - Acts as an OAuth authorization server for MCP clients; delegates identity to YNAB's own OAuth
+- Issues short-lived access tokens plus rotating refresh tokens, so clients silently renew access in the background; the underlying YNAB token is transparently refreshed before it expires, keeping a connection alive without re-authorizing
 
 ## Deployment
 
