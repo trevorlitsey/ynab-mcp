@@ -6,7 +6,7 @@ A remote [Model Context Protocol](https://modelcontextprotocol.io) server for [Y
 
 Read:
 
-- `list_budgets`, `get_budget`
+- `list_budgets`, `get_budget`, `get_budget_settings` (currency & date formatting)
 - `list_accounts`, `get_account`
 - `list_categories`, `get_category`
 - `list_payees`

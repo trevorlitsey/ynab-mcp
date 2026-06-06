@@ -48,6 +48,24 @@ export function registerTools(server: McpServer, api: ynab.API): void {
   );
 
   server.registerTool(
+    "get_budget_settings",
+    {
+      title: "Get Budget Settings",
+      description:
+        "Get a budget's currency and date formatting settings. Use this to correctly format amounts and dates: YNAB amounts are integers in 'milliunits' (1/1000 of the currency unit), so an amount of 1234560 means 1234.56 in the budget's currency.",
+      inputSchema: {
+        budget_id: z
+          .string()
+          .describe("YNAB budget id, or 'last-used' / 'default'"),
+      },
+    },
+    async ({ budget_id }) => {
+      const res = await api.budgets.getBudgetSettingsById(budget_id);
+      return ok(res.data.settings);
+    }
+  );
+
+  server.registerTool(
     "list_accounts",
     {
       title: "List Accounts",
