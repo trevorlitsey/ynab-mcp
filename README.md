@@ -6,7 +6,7 @@ A remote [Model Context Protocol](https://modelcontextprotocol.io) server for [Y
 
 Read:
 
-- `list_budgets`, `get_budget`
+- `list_budgets`, `get_budget`, `get_budget_settings` (currency & date formatting)
 - `list_accounts`, `get_account`
 - `list_categories`, `get_category`
 - `list_payees`
@@ -18,8 +18,9 @@ Read:
 Write:
 
 - `update_transaction` — edit a transaction's `memo`, `category_id`, and/or `flag_color` (pass `category_id: null` to uncategorize; `flag_color: null` to remove the flag; valid colors: red, orange, yellow, green, blue, purple)
+- `bulk_update_transactions` — update many transactions at once; each item is keyed by `id` and may set `memo`, `category_id`, and/or `flag_color` (same fields as `update_transaction`). Handy for categorizing or flagging a batch in one call.
 
-> **Note:** Because of the write tool, the server now requests YNAB's full (read/write) OAuth scope rather than read-only. Existing connections will need to re-authorize to grant write access.
+> **Note:** Because of the write tools, the server now requests YNAB's full (read/write) OAuth scope rather than read-only. Existing connections will need to re-authorize to grant write access.
 
 ## Architecture
 
