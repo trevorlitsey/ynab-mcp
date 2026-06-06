@@ -271,6 +271,69 @@ export function registerTools(server: McpServer, api: ynab.API): void {
   );
 
   server.registerTool(
+    "bulk_update_transactions",
+    {
+      title: "Bulk Update Transactions",
+      description:
+        "Update many transactions in a single request. Each item must include the transaction id plus the fields to change; only provided fields are changed, omitted fields are left as-is. Common uses: approve a batch of imported transactions, categorize or flag several at once, or mark them cleared. Pass category_id: null to uncategorize and flag_color: null to remove a flag.",
+      inputSchema: {
+        budget_id: z.string(),
+        transactions: z
+          .array(
+            z.object({
+              id: z.string().describe("The id of the transaction to update."),
+              memo: z
+                .string()
+                .nullable()
+                .optional()
+                .describe("New memo text. Pass null or empty string to clear."),
+              category_id: z
+                .string()
+                .nullable()
+                .optional()
+                .describe("New category id. Pass null to uncategorize."),
+              flag_color: z
+                .enum(["red", "orange", "yellow", "green", "blue", "purple"])
+                .nullable()
+                .optional()
+                .describe("New flag color. Pass null to remove the flag."),
+              approved: z
+                .boolean()
+                .optional()
+                .describe("Set true to approve the transaction."),
+              cleared: z
+                .enum(["cleared", "uncleared", "reconciled"])
+                .optional()
+                .describe("New cleared status."),
+            })
+          )
+          .min(1)
+          .describe("List of transactions to update (each keyed by id)."),
+      },
+    },
+    async ({ budget_id, transactions }) => {
+      const payload: ynab.SaveTransactionWithIdOrImportId[] = transactions.map(
+        (t) => {
+          const out: ynab.SaveTransactionWithIdOrImportId = { id: t.id };
+          if (t.memo !== undefined) out.memo = t.memo;
+          if (t.category_id !== undefined) out.category_id = t.category_id;
+          if (t.flag_color !== undefined)
+            out.flag_color = t.flag_color as ynab.TransactionFlagColor | null;
+          if (t.approved !== undefined) out.approved = t.approved;
+          if (t.cleared !== undefined)
+            out.cleared = t.cleared as ynab.TransactionClearedStatus;
+          return out;
+        }
+      );
+
+      const res = await api.transactions.updateTransactions(budget_id, {
+        transactions: payload,
+      });
+      return ok(res.data);
+    }
+  );
+
+  server.registerTool(
     "list_scheduled_transactions",
     {
       title: "List Scheduled Transactions",
