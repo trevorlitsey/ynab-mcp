@@ -17,7 +17,7 @@ Read:
 
 Write:
 
-- `update_transaction` — edit a transaction's `memo` and/or `category_id` (pass `category_id: null` to uncategorize)
+- `update_transaction` — edit a transaction's `memo`, `category_id`, and/or `flag_color` (pass `category_id: null` to uncategorize; `flag_color: null` to remove the flag; valid colors: red, orange, yellow, green, blue, purple)
 
 > **Note:** Because of the write tool, the server now requests YNAB's full (read/write) OAuth scope rather than read-only. Existing connections will need to re-authorize to grant write access.
 
