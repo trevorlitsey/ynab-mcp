@@ -201,7 +201,7 @@ export function registerTools(server: McpServer, api: ynab.API): void {
     {
       title: "Update Transaction",
       description:
-        "Update an existing transaction's memo and/or category. Only the provided fields are changed; omitted fields are left as-is. Pass category_id: null to clear (uncategorize) a transaction.",
+        "Update an existing transaction's memo, category, and/or flag color. Only the provided fields are changed; omitted fields are left as-is. Pass category_id: null to clear (uncategorize) a transaction. Pass flag_color: null to remove the flag.",
       inputSchema: {
         budget_id: z.string(),
         transaction_id: z.string(),
@@ -217,15 +217,31 @@ export function registerTools(server: McpServer, api: ynab.API): void {
           .describe(
             "New category id. Pass null to uncategorize the transaction."
           ),
+        flag_color: z
+          .enum(["red", "orange", "yellow", "green", "blue", "purple"])
+          .nullable()
+          .optional()
+          .describe(
+            "New flag color. One of red, orange, yellow, green, blue, purple. Pass null to remove the flag."
+          ),
       },
     },
-    async ({ budget_id, transaction_id, memo, category_id }) => {
-      if (memo === undefined && category_id === undefined) {
-        return err("Provide at least one of memo or category_id to update.");
+    async ({ budget_id, transaction_id, memo, category_id, flag_color }) => {
+      if (
+        memo === undefined &&
+        category_id === undefined &&
+        flag_color === undefined
+      ) {
+        return err(
+          "Provide at least one of memo, category_id, or flag_color to update."
+        );
       }
       const transaction: ynab.ExistingTransaction = {};
       if (memo !== undefined) transaction.memo = memo;
       if (category_id !== undefined) transaction.category_id = category_id;
+      if (flag_color !== undefined)
+        transaction.flag_color =
+          flag_color as ynab.TransactionFlagColor | null;
 
       const res = await api.transactions.updateTransaction(
         budget_id,
