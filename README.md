@@ -18,7 +18,7 @@ Read:
 Write:
 
 - `update_transaction` — edit a transaction's `memo`, `category_id`, and/or `flag_color` (pass `category_id: null` to uncategorize; `flag_color: null` to remove the flag; valid colors: red, orange, yellow, green, blue, purple)
-- `bulk_update_transactions` — update many transactions at once; each item is keyed by `id` and may set `memo`, `category_id`, `flag_color`, `approved`, and/or `cleared` (cleared status: cleared, uncleared, reconciled). Handy for approving, categorizing, or flagging a batch in one call.
+- `bulk_update_transactions` — update many transactions at once; each item is keyed by `id` and may set `memo`, `category_id`, and/or `flag_color` (same fields as `update_transaction`). Handy for categorizing or flagging a batch in one call.
 
 > **Note:** Because of the write tools, the server now requests YNAB's full (read/write) OAuth scope rather than read-only. Existing connections will need to re-authorize to grant write access.
 

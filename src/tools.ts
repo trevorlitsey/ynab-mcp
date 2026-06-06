@@ -275,7 +275,7 @@ export function registerTools(server: McpServer, api: ynab.API): void {
     {
       title: "Bulk Update Transactions",
       description:
-        "Update many transactions in a single request. Each item must include the transaction id plus the fields to change; only provided fields are changed, omitted fields are left as-is. Common uses: approve a batch of imported transactions, categorize or flag several at once, or mark them cleared. Pass category_id: null to uncategorize and flag_color: null to remove a flag.",
+        "Update many transactions in a single request. Each item must include the transaction id plus the fields to change; only provided fields are changed, omitted fields are left as-is. Common uses: categorize or flag several transactions at once. Pass category_id: null to uncategorize and flag_color: null to remove a flag.",
       inputSchema: {
         budget_id: z.string(),
         transactions: z
@@ -297,14 +297,6 @@ export function registerTools(server: McpServer, api: ynab.API): void {
                 .nullable()
                 .optional()
                 .describe("New flag color. Pass null to remove the flag."),
-              approved: z
-                .boolean()
-                .optional()
-                .describe("Set true to approve the transaction."),
-              cleared: z
-                .enum(["cleared", "uncleared", "reconciled"])
-                .optional()
-                .describe("New cleared status."),
             })
           )
           .min(1)
@@ -319,9 +311,6 @@ export function registerTools(server: McpServer, api: ynab.API): void {
           if (t.category_id !== undefined) out.category_id = t.category_id;
           if (t.flag_color !== undefined)
             out.flag_color = t.flag_color as ynab.TransactionFlagColor | null;
-          if (t.approved !== undefined) out.approved = t.approved;
-          if (t.cleared !== undefined)
-            out.cleared = t.cleared as ynab.TransactionClearedStatus;
           return out;
         }
       );
