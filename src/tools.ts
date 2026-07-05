@@ -370,6 +370,78 @@ export function registerTools(server: McpServer, api: ynab.API): void {
   );
 
   server.registerTool(
+    "get_category_average_spend",
+    {
+      title: "Get Category Average Spend",
+      description:
+        "Average monthly spending per category over the most recent N fully-completed months. " +
+        "Averages each category's `activity` (spending, in milliunits) across up to `months` completed budget months; " +
+        "the current in-progress month and future months are excluded.",
+      inputSchema: {
+        budget_id: z.string(),
+        months: z
+          .number()
+          .int()
+          .positive()
+          .max(60)
+          .optional()
+          .describe("Number of recent months to average over (default 6)"),
+        category_id: z
+          .string()
+          .optional()
+          .describe("If set, only report this category"),
+      },
+    },
+    async ({ budget_id, months = 6, category_id }) => {
+      const monthsRes = await api.months.getBudgetMonths(budget_id);
+      // YNAB returns the current and future budget months too. Exclude the
+      // current (still-incomplete) month and anything after it so the average
+      // reflects only fully-completed months of spending.
+      const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+      const recent = monthsRes.data.months
+        .map((m) => m.month)
+        .filter((m) => m.slice(0, 7) < currentMonth)
+        .sort()
+        .slice(-months);
+
+      if (recent.length === 0) {
+        return err("No budget months found.");
+      }
+
+      const totals = new Map<
+        string,
+        { name: string; total_activity: number; months_counted: number }
+      >();
+
+      for (const month of recent) {
+        const detail = await api.months.getBudgetMonth(budget_id, month);
+        for (const cat of detail.data.month.categories) {
+          if (category_id && cat.id !== category_id) continue;
+          if (cat.deleted) continue;
+          const entry = totals.get(cat.id) ?? {
+            name: cat.name,
+            total_activity: 0,
+            months_counted: 0,
+          };
+          entry.total_activity += cat.activity;
+          entry.months_counted += 1;
+          totals.set(cat.id, entry);
+        }
+      }
+
+      const categories = Array.from(totals.entries()).map(([id, e]) => ({
+        category_id: id,
+        name: e.name,
+        months_counted: e.months_counted,
+        total_activity: e.total_activity,
+        average_activity: Math.round(e.total_activity / e.months_counted),
+      }));
+
+      return ok({ months_averaged: recent.length, categories });
+    }
+  );
+
+  server.registerTool(
     "get_user",
     {
       title: "Get User",
