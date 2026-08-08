@@ -32,6 +32,23 @@ export type CodeRecord = {
   ttl: number;
 };
 
+// The in-flight authorization request, saved when we redirect the user to YNAB
+// and consumed when YNAB redirects back to /callback. Keyed by the random
+// `state` value we hand to YNAB (and which YNAB echoes back), so we can recover
+// it without depending on a browser cookie surviving the cross-site redirect —
+// cookies are routinely dropped by Safari/iOS ITP and in-app OAuth webviews,
+// which would otherwise break the connection at the callback.
+export type PendingAuthRecord = {
+  pk: string;
+  state: string;
+  clientId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  codeChallengeMethod: string;
+  clientState: string | null;
+  ttl: number;
+};
+
 // A session owns the YNAB tokens for one authorized connection. Access tokens
 // and refresh tokens reference it by id, so refreshing the YNAB token (which
 // rotates both YNAB tokens) only has to update this one record.
@@ -61,6 +78,7 @@ export type RefreshTokenRecord = {
 
 const CLIENT_PREFIX = "client#";
 const CODE_PREFIX = "code#";
+const PENDING_PREFIX = "pending#";
 const SESSION_PREFIX = "session#";
 const TOKEN_PREFIX = "token#";
 const REFRESH_PREFIX = "refresh#";
@@ -82,6 +100,38 @@ export async function getClient(clientId: string): Promise<ClientRecord | null> 
     })
   );
   return (result.Item as ClientRecord) ?? null;
+}
+
+export async function savePendingAuth(
+  record: Omit<PendingAuthRecord, "pk">
+): Promise<void> {
+  await client.send(
+    new PutCommand({
+      TableName: config.tableName,
+      Item: { ...record, pk: PENDING_PREFIX + record.state },
+    })
+  );
+}
+
+// Single-use: read and delete the pending authorization in one step so a given
+// `state` can only complete the flow once.
+export async function consumePendingAuth(
+  state: string
+): Promise<PendingAuthRecord | null> {
+  const result = await client.send(
+    new GetCommand({
+      TableName: config.tableName,
+      Key: { pk: PENDING_PREFIX + state },
+    })
+  );
+  if (!result.Item) return null;
+  await client.send(
+    new DeleteCommand({
+      TableName: config.tableName,
+      Key: { pk: PENDING_PREFIX + state },
+    })
+  );
+  return result.Item as PendingAuthRecord;
 }
 
 export async function saveCode(record: Omit<CodeRecord, "pk">): Promise<void> {

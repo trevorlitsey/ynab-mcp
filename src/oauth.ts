@@ -12,6 +12,8 @@ import {
 import {
   saveClient,
   getClient,
+  savePendingAuth,
+  consumePendingAuth,
   saveCode,
   consumeCode,
   saveSession,
@@ -112,18 +114,20 @@ export function oauthRouter(): Router {
 
     const ynabState = randomToken(16);
     const ynabRedirectUri = `${publicUrl(req)}/callback`;
-    res.cookie(
-      "pending_auth",
-      JSON.stringify({
-        ynabState,
-        clientId: client_id,
-        redirectUri: redirect_uri,
-        codeChallenge: code_challenge,
-        codeChallengeMethod: code_challenge_method,
-        clientState: state ?? null,
-      }),
-      { httpOnly: true, secure: true, sameSite: "lax", maxAge: TEN_MINUTES * 1000 }
-    );
+    // Persist the in-flight request server-side keyed by `state` rather than in
+    // a cookie: the callback arrives as a cross-site redirect from YNAB, where
+    // browsers (notably Safari/iOS) frequently drop the cookie and break the
+    // connection. `state` is 128 bits of randomness that YNAB echoes back, so
+    // it's a safe lookup key, and PKCE still binds the final token exchange.
+    await savePendingAuth({
+      state: ynabState,
+      clientId: client_id,
+      redirectUri: redirect_uri,
+      codeChallenge: code_challenge,
+      codeChallengeMethod: code_challenge_method,
+      clientState: state ?? null,
+      ttl: nowSeconds() + TEN_MINUTES,
+    });
 
     const url = new URL(YNAB_AUTH_URL);
     url.searchParams.set("client_id", config.ynabClientId);
@@ -136,23 +140,16 @@ export function oauthRouter(): Router {
   });
 
   router.get("/callback", async (req: Request, res: Response) => {
-    const cookie = req.cookies?.pending_auth as string | undefined;
-    if (!cookie) {
-      res.status(400).send("missing pending auth cookie");
+    const { code, state } = req.query as Record<string, string>;
+    if (!state) {
+      res.status(400).send("missing state");
       return;
     }
-    const pending = JSON.parse(cookie) as {
-      ynabState: string;
-      clientId: string;
-      redirectUri: string;
-      codeChallenge: string;
-      codeChallengeMethod: string;
-      clientState: string | null;
-    };
-
-    const { code, state } = req.query as Record<string, string>;
-    if (state !== pending.ynabState) {
-      res.status(400).send("state mismatch");
+    // Recover the in-flight request by the `state` YNAB echoed back. Consuming
+    // it (single-use) also enforces that a given authorization completes once.
+    const pending = await consumePendingAuth(state);
+    if (!pending) {
+      res.status(400).send("unknown or expired authorization request");
       return;
     }
     if (!code) {
@@ -196,7 +193,6 @@ export function oauthRouter(): Router {
       ynabExpiresAt,
       ttl: nowSeconds() + TEN_MINUTES,
     });
-    res.clearCookie("pending_auth");
 
     const redirect = new URL(pending.redirectUri);
     redirect.searchParams.set("code", ourCode);
