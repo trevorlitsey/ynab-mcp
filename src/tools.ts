@@ -8,6 +8,76 @@ function ok(value: unknown) {
   };
 }
 
+const DEFAULT_LIST_LIMIT = 100;
+const MAX_LIST_LIMIT = 500;
+
+function boundedLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) return DEFAULT_LIST_LIMIT;
+  return Math.min(Math.max(Math.trunc(limit ?? DEFAULT_LIST_LIMIT), 1), MAX_LIST_LIMIT);
+}
+
+function boundedOffset(offset: number | undefined): number {
+  if (!Number.isFinite(offset)) return 0;
+  return Math.max(Math.trunc(offset ?? 0), 0);
+}
+
+function pageArray<T>(items: T[], limit?: number, offset?: number) {
+  const safeLimit = boundedLimit(limit);
+  const safeOffset = boundedOffset(offset);
+  const page = items.slice(safeOffset, safeOffset + safeLimit);
+  const nextOffset = safeOffset + safeLimit < items.length ? safeOffset + safeLimit : null;
+  return {
+    items: page,
+    count: page.length,
+    total_count: items.length,
+    limit: safeLimit,
+    offset: safeOffset,
+    next_offset: nextOffset,
+  };
+}
+
+function listPagingSchema() {
+  return {
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_LIST_LIMIT)
+      .optional()
+      .describe(`Maximum number of records to return. Defaults to ${DEFAULT_LIST_LIMIT}; max ${MAX_LIST_LIMIT}.`),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("Zero-based offset for pagination. Use next_offset from the previous response."),
+  };
+}
+
+function compactBudget(budget: Record<string, unknown>, includeTransactions: boolean, limit?: number, offset?: number) {
+  const result: Record<string, unknown> = { ...budget };
+  for (const key of [
+    "transactions",
+    "subtransactions",
+    "months",
+    "payees",
+    "payee_locations",
+    "scheduled_transactions",
+    "scheduled_subtransactions",
+  ] as const) {
+    const value = budget[key];
+    if (!Array.isArray(value)) continue;
+    if (includeTransactions && (key === "transactions" || key === "subtransactions")) {
+      result[key] = pageArray(value, limit, offset);
+    } else {
+      delete result[key];
+      result[`${key}_omitted`] = true;
+      result[`${key}_count`] = value.length;
+    }
+  }
+  return result;
+}
+
 function err(message: string) {
   return {
     isError: true,
@@ -34,16 +104,28 @@ export function registerTools(server: McpServer, api: ynab.API): void {
     {
       title: "Get Budget",
       description:
-        "Get a single budget including accounts, categories, and recent transactions.",
+        "Get a single budget including accounts and categories. Transactions are omitted by default to keep connector responses small; use include_transactions plus limit/offset when needed.",
       inputSchema: {
         budget_id: z
           .string()
           .describe("YNAB budget id, or 'last-used' / 'default'"),
+        include_transactions: z
+          .boolean()
+          .optional()
+          .describe("Include a paginated transactions page in the response. Defaults to false."),
+        ...listPagingSchema(),
       },
     },
-    async ({ budget_id }) => {
+    async ({ budget_id, include_transactions, limit, offset }) => {
       const res = await api.budgets.getBudgetById(budget_id);
-      return ok(res.data.budget);
+      return ok(
+        compactBudget(
+          res.data.budget as unknown as Record<string, unknown>,
+          include_transactions === true,
+          limit,
+          offset
+        )
+      );
     }
   );
 
@@ -122,11 +204,11 @@ export function registerTools(server: McpServer, api: ynab.API): void {
     {
       title: "List Payees",
       description: "List all payees in a budget.",
-      inputSchema: { budget_id: z.string() },
+      inputSchema: { budget_id: z.string(), ...listPagingSchema() },
     },
-    async ({ budget_id }) => {
+    async ({ budget_id, limit, offset }) => {
       const res = await api.payees.getPayees(budget_id);
-      return ok(res.data.payees);
+      return ok(pageArray(res.data.payees, limit, offset));
     }
   );
 
@@ -158,10 +240,11 @@ export function registerTools(server: McpServer, api: ynab.API): void {
           .enum(["uncategorized", "unapproved"])
           .optional()
           .describe("Optional filter by transaction type"),
+        ...listPagingSchema(),
       },
     },
-    async ({ budget_id, account_id, category_id, payee_id, since_date, type }) => {
-      let data;
+    async ({ budget_id, account_id, category_id, payee_id, since_date, type, limit, offset }) => {
+      let data: unknown[];
       if (account_id) {
         const res = await api.transactions.getTransactionsByAccount(
           budget_id,
@@ -194,7 +277,7 @@ export function registerTools(server: McpServer, api: ynab.API): void {
         );
         data = res.data.transactions;
       }
-      return ok(data);
+      return ok(pageArray(data, limit, offset));
     }
   );
 
@@ -327,13 +410,13 @@ export function registerTools(server: McpServer, api: ynab.API): void {
     {
       title: "List Scheduled Transactions",
       description: "List all scheduled (recurring) transactions in a budget.",
-      inputSchema: { budget_id: z.string() },
+      inputSchema: { budget_id: z.string(), ...listPagingSchema() },
     },
-    async ({ budget_id }) => {
+    async ({ budget_id, limit, offset }) => {
       const res = await api.scheduledTransactions.getScheduledTransactions(
         budget_id
       );
-      return ok(res.data.scheduled_transactions);
+      return ok(pageArray(res.data.scheduled_transactions, limit, offset));
     }
   );
 
@@ -342,11 +425,11 @@ export function registerTools(server: McpServer, api: ynab.API): void {
     {
       title: "List Months",
       description: "List monthly budget summaries.",
-      inputSchema: { budget_id: z.string() },
+      inputSchema: { budget_id: z.string(), ...listPagingSchema() },
     },
-    async ({ budget_id }) => {
+    async ({ budget_id, limit, offset }) => {
       const res = await api.months.getBudgetMonths(budget_id);
-      return ok(res.data.months);
+      return ok(pageArray(res.data.months, limit, offset));
     }
   );
 
